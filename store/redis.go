@@ -79,13 +79,23 @@ func (r *Redis) Set(ctx context.Context, key string, v any, expireAt time.Time) 
 	if err != nil {
 		return err
 	}
-	return r.client.Set(ctx, r.key(key), data, time.Until(expireAt)).Err()
+	return r.setWithTTL(ctx, key, data, time.Until(expireAt))
 }
 
 func (r *Redis) SetTTL(ctx context.Context, key string, v any, ttl time.Duration) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
+	}
+	return r.setWithTTL(ctx, key, data, ttl)
+}
+
+// setWithTTL refuses to write keys without a positive TTL. go-redis sends a
+// plain SET (no expiry) for ttl <= 0, which would leave already-expired
+// sessions/shares in redis forever.
+func (r *Redis) setWithTTL(ctx context.Context, key string, data []byte, ttl time.Duration) error {
+	if ttl <= 0 {
+		return r.client.Del(ctx, r.key(key)).Err()
 	}
 	return r.client.Set(ctx, r.key(key), data, ttl).Err()
 }

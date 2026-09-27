@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -102,12 +103,16 @@ func (l *Limiter) WrapFunc(next http.HandlerFunc) http.HandlerFunc {
 
 func (l *Limiter) clientIP(r *http.Request) string {
 	if l.trustProxy {
-		// check X-Forwarded-For (railway, nginx, etc)
+		// check X-Forwarded-For (railway, nginx, etc). proxies append the
+		// peer address, so only the rightmost entry is set by our proxy;
+		// anything left of it is client-controlled and spoofable.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if idx := strings.Index(xff, ","); idx != -1 {
-				return strings.TrimSpace(xff[:idx])
+			if idx := strings.LastIndex(xff, ","); idx != -1 {
+				xff = xff[idx+1:]
 			}
-			return strings.TrimSpace(xff)
+			if ip := strings.TrimSpace(xff); ip != "" {
+				return ip
+			}
 		}
 		// check X-Real-IP
 		if xri := r.Header.Get("X-Real-IP"); xri != "" {
@@ -115,8 +120,8 @@ func (l *Limiter) clientIP(r *http.Request) string {
 		}
 	}
 	// use remote addr directly
-	if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
-		return r.RemoteAddr[:idx]
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
 	}
 	return r.RemoteAddr
 }

@@ -207,3 +207,28 @@ func TestRedisIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestRedisPastExpiryNotPersisted(t *testing.T) {
+	ctx := context.Background()
+
+	r, err := NewRedis(getRedisAddr(), "", "hauk-test")
+	if err != nil {
+		t.Skipf("redis not available: %v", err)
+	}
+	defer r.Close()
+
+	if err := r.Set(ctx, "past", "x", time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("set failed: %v", err)
+	}
+	// saving with an expiry in the past must not create a key without TTL
+	if err := r.Set(ctx, "past", "x", time.Now().Add(-time.Second)); err != nil {
+		t.Fatalf("set failed: %v", err)
+	}
+	exists, err := r.Exists(ctx, "past")
+	if err != nil {
+		t.Fatalf("exists failed: %v", err)
+	}
+	if exists {
+		t.Error("key with past expiry should not exist")
+	}
+}

@@ -93,12 +93,24 @@ func (s *SoloShare) Delete(ctx context.Context) error {
 	return s.store.Delete(ctx, PrefixLocdata+s.id)
 }
 
-func NewGroupShare(s store.Store, publicURL string, linkGen func() (string, error)) (*GroupShare, error) {
+func NewGroupShare(ctx context.Context, s store.Store, publicURL string, linkGen func() (string, error)) (*GroupShare, error) {
 	id, err := linkGen()
 	if err != nil {
 		return nil, err
 	}
-	pin := GroupPinMin + cryptoRandInt(GroupPinMax-GroupPinMin+1)
+	// pins of active groups must not collide, otherwise the new group would
+	// hijack the groupid- mapping of an existing one
+	var pin int
+	for {
+		pin = GroupPinMin + cryptoRandInt(GroupPinMax-GroupPinMin+1)
+		exists, err := s.Exists(ctx, PrefixGroupID+strconv.Itoa(pin))
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			break
+		}
+	}
 	return &GroupShare{
 		store:     s,
 		id:        id,
@@ -139,8 +151,16 @@ func (g *GroupShare) ViewLink() string        { return g.publicURL + "?" + g.id 
 func (g *GroupShare) SetExpire(t time.Time)   { g.data.Expire = t.Unix() }
 func (g *GroupShare) SetID(id string)         { g.id = id }
 
-func (g *GroupShare) AddHost(nick, sessionID string) {
+// AddHost adds a participant and extends the share lifetime to cover the
+// host's session, like upstream setAutoExpirationTime().
+func (g *GroupShare) AddHost(nick, sessionID string, sessionExpire time.Time) {
+	if g.data.Hosts == nil {
+		g.data.Hosts = make(map[string]string)
+	}
 	g.data.Hosts[nick] = sessionID
+	if sessionExpire.Unix() > g.data.Expire {
+		g.data.Expire = sessionExpire.Unix()
+	}
 }
 
 func (g *GroupShare) RemoveHost(sessionID string) {
@@ -150,6 +170,28 @@ func (g *GroupShare) RemoveHost(sessionID string) {
 			return
 		}
 	}
+}
+
+// Clean drops hosts whose sessions are gone or expired and sets the share
+// expiry to the latest remaining session expiry. Returns false if no hosts
+// remain, in which case the caller should Delete the share.
+func (g *GroupShare) Clean(ctx context.Context, maxPts int) bool {
+	var expire int64
+	for nick, sid := range g.data.Hosts {
+		sess, err := LoadSession(ctx, g.store, sid, maxPts)
+		if err != nil || sess.HasExpired() {
+			delete(g.data.Hosts, nick)
+			continue
+		}
+		if e := sess.Expire().Unix(); e > expire {
+			expire = e
+		}
+	}
+	if len(g.data.Hosts) == 0 {
+		return false
+	}
+	g.data.Expire = expire
+	return true
 }
 
 func (g *GroupShare) Save(ctx context.Context) error {

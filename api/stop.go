@@ -54,10 +54,10 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 				share, err := model.LoadGroupShare(ctx, s.store, lid, s.cfg.PublicURL)
 				if err == nil {
 					share.RemoveHost(sid)
-					if len(share.Hosts()) == 0 {
-						share.Delete(ctx)
-					} else {
+					if share.Clean(ctx, s.cfg.MaxCachedPts) {
 						share.Save(ctx)
+					} else {
+						share.Delete(ctx)
 					}
 				}
 			}
@@ -81,10 +81,10 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 				share, err := model.LoadGroupShare(ctx, s.store, t, s.cfg.PublicURL)
 				if err == nil {
 					share.RemoveHost(sid)
-					if len(share.Hosts()) == 0 {
-						share.Delete(ctx)
-					} else {
+					if share.Clean(ctx, s.cfg.MaxCachedPts) {
 						share.Save(ctx)
+					} else {
+						share.Delete(ctx)
 					}
 				}
 			}

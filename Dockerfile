@@ -8,5 +8,6 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o hauk .
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/hauk /usr/local/bin/
+USER nobody
 EXPOSE 8080
 CMD ["hauk"]

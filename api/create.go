@@ -143,7 +143,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, share.ID())
 
 	case shareModeCreateGroup:
-		share, err := model.NewGroupShare(s.store, s.cfg.PublicURL, linkGen)
+		share, err := model.NewGroupShare(ctx, s.store, s.cfg.PublicURL, linkGen)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -155,8 +155,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		share.AddHost(nickname, session.ID())
 		share.SetExpire(expire)
+		share.AddHost(nickname, session.ID(), expire)
 		if err := share.Save(ctx); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -181,7 +181,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		share.AddHost(nickname, session.ID())
+		share.AddHost(nickname, session.ID(), expire)
 		if err := share.Save(ctx); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

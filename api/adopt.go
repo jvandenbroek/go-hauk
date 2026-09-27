@@ -73,7 +73,7 @@ func (s *Server) handleAdopt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target.AddHost(nickname, share.Host())
+	target.AddHost(nickname, share.Host(), session.Expire())
 	if err := target.Save(ctx); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

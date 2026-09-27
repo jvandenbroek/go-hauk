@@ -728,3 +728,97 @@ func TestEncryptedSession(t *testing.T) {
 		}
 	})
 }
+
+func createGroup(t *testing.T, srv http.Handler, dur, nick string) (sid, pin, shareID string) {
+	t.Helper()
+	w := postForm(srv, "/api/create.php", url.Values{
+		"dur": {dur}, "int": {"5"}, "pwd": {"test"}, "mod": {"1"}, "nic": {nick},
+	})
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	if len(lines) != 5 || lines[0] != "OK" {
+		t.Fatalf("create group failed: %s", w.Body.String())
+	}
+	return lines[1], lines[3], lines[4]
+}
+
+func joinGroup(t *testing.T, srv http.Handler, dur, nick, pin string) string {
+	t.Helper()
+	w := postForm(srv, "/api/create.php", url.Values{
+		"dur": {dur}, "int": {"5"}, "pwd": {"test"}, "mod": {"2"}, "nic": {nick}, "pin": {pin},
+	})
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	if len(lines) != 4 || lines[0] != "OK" {
+		t.Fatalf("join group failed: %s", w.Body.String())
+	}
+	return lines[1]
+}
+
+func fetchExpire(t *testing.T, srv http.Handler, id string) int64 {
+	t.Helper()
+	w := getPath(srv, "/api/fetch.php?id="+id)
+	var resp struct {
+		Expire int64 `json:"expire"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("fetch failed: %s", w.Body.String())
+	}
+	return resp.Expire
+}
+
+func TestGroupShareExpiry(t *testing.T) {
+	srv, _ := testServer()
+
+	ownerSid, pin, shareID := createGroup(t, srv, "600", "owner")
+	initial := fetchExpire(t, srv, shareID)
+
+	// a joiner with a longer duration must extend the group, like upstream
+	joinerSid := joinGroup(t, srv, "7200", "joiner", pin)
+	extended := fetchExpire(t, srv, shareID)
+	if extended < initial+6500 {
+		t.Fatalf("group expiry not extended on join: %d -> %d", initial, extended)
+	}
+
+	// once the long-lived joiner leaves, the group falls back to the owner
+	postForm(srv, "/api/stop.php", url.Values{"sid": {joinerSid}})
+	if got := fetchExpire(t, srv, shareID); got != initial {
+		t.Errorf("group expiry after joiner stop = %d, want %d", got, initial)
+	}
+
+	// last host leaving deletes the share and pin mapping
+	postForm(srv, "/api/stop.php", url.Values{"sid": {ownerSid}})
+	if w := getPath(srv, "/api/fetch.php?id="+shareID); w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 after all hosts stopped, got %d", w.Code)
+	}
+	w := postForm(srv, "/api/create.php", url.Values{
+		"dur": {"600"}, "int": {"5"}, "pwd": {"test"}, "mod": {"2"}, "nic": {"late"}, "pin": {pin},
+	})
+	if !strings.Contains(w.Body.String(), "Invalid group PIN!") {
+		t.Errorf("expected invalid pin after group ended, got: %s", w.Body.String())
+	}
+}
+
+func TestPostRejectsNonFinite(t *testing.T) {
+	srv, _ := testServer()
+
+	w := postForm(srv, "/api/create.php", url.Values{
+		"dur": {"3600"}, "int": {"5"}, "pwd": {"test"},
+	})
+	sid := strings.Split(w.Body.String(), "\n")[1]
+
+	for _, v := range []string{"NaN", "Inf", "-Inf"} {
+		w := postForm(srv, "/api/post.php", url.Values{
+			"sid": {sid}, "lat": {v}, "lon": {"5"}, "time": {"1700000000"},
+		})
+		if !strings.Contains(w.Body.String(), "Invalid location!") {
+			t.Errorf("lat=%s: expected invalid location, got %d %s", v, w.Code, w.Body.String())
+		}
+	}
+
+	// garbage speed/accuracy is dropped instead of breaking the session
+	w = postForm(srv, "/api/post.php", url.Values{
+		"sid": {sid}, "lat": {"52"}, "lon": {"5"}, "time": {"1700000000"}, "spd": {"NaN"}, "acc": {"Inf"},
+	})
+	if !strings.HasPrefix(w.Body.String(), "OK") {
+		t.Errorf("expected OK, got %d %s", w.Code, w.Body.String())
+	}
+}

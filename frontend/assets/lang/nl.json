@@ -30,6 +30,9 @@
     "btn_show_all": "Toon alle",
     "btn_close": "Sluiten",
     "control_show_self": "Toon mijn locatie",
+    "control_auto_zoom_on": "Automatisch zoomen aan: zoomt mee met snelheid (tik om uit te zetten)",
+    "control_auto_zoom_paused": "Automatisch zoomen gepauzeerd na handmatig zoomen (tik om te hervatten)",
+    "control_auto_zoom_off": "Automatisch zoomen uit (tik om aan te zetten)",
     "dialog_user_navigate": "Navigeer naar",
     "dialog_user_follow": "Toon op kaart",
     "dialog_active_head": "Actieve gebruikers"

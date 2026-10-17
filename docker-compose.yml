@@ -10,6 +10,7 @@ services:
       HAUK_PUBLIC_URL: "${HAUK_PUBLIC_URL:-http://localhost:8080/}"
       HAUK_MAX_DURATION: "${HAUK_MAX_DURATION:-86400}"
       HAUK_TRUST_PROXY: "${HAUK_TRUST_PROXY:-false}"
+      HAUK_AUTO_ZOOM: "${HAUK_AUTO_ZOOM:-true}"
     depends_on:
       redis:
         condition: service_healthy

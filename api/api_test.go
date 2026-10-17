@@ -496,6 +496,17 @@ func TestDynamic(t *testing.T) {
 	if !strings.Contains(body, "VELOCITY_UNIT") {
 		t.Error("expected VELOCITY_UNIT in dynamic.js")
 	}
+	// no steps configured => auto zoom reported as disabled
+	if !strings.Contains(body, `var AUTO_ZOOM = {"enabled":false,`) {
+		t.Errorf("expected disabled AUTO_ZOOM in dynamic.js, got: %s", body)
+	}
+
+	srv.cfg.AutoZoom = true
+	srv.cfg.AutoZoomSteps, _ = config.ParseZoomSteps("0:17,30:15")
+	body = getPath(srv, "/dynamic.js.php").Body.String()
+	if !strings.Contains(body, `var AUTO_ZOOM = {"enabled":true,"steps":[[0,17],[30,15]],`) {
+		t.Errorf("expected AUTO_ZOOM steps in dynamic.js, got: %s", body)
+	}
 }
 
 func TestVersionHeader(t *testing.T) {

@@ -1,8 +1,13 @@
 package config
 
 import (
+	"fmt"
+	"log"
 	"os"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 type AuthMethod int
@@ -84,11 +89,76 @@ type Config struct {
 	TrailColor        string
 	OfflineTimeout    int
 	RequestTimeout    int
+	SpeedFontSize     string
+
+	// speed-dependent auto zoom in the web viewer
+	AutoZoom            bool
+	AutoZoomSteps       []ZoomStep
+	AutoZoomSmoothing   float64 // EMA weight of the newest speed sample, (0, 1]
+	AutoZoomMinInterval float64 // seconds between automatic zoom changes
+	AutoZoomHysteresis  float64 // km/h margin around step breakpoints
+	AutoZoomResume      int     // seconds after manual zoom before auto zoom resumes, 0 = never
 
 	// rate limiting
 	RateLimitAuth   int  // requests per minute for auth endpoints
 	RateLimitAdopt  int  // requests per minute for adopt/join endpoints
 	TrustProxy      bool // trust X-Forwarded-For headers
+}
+
+// ZoomStep maps a minimum speed in km/h to a map zoom level.
+type ZoomStep struct {
+	Speed float64
+	Zoom  int
+}
+
+// MarshalJSON encodes a step as [speed, zoom] for the frontend.
+func (z ZoomStep) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("[%g,%d]", z.Speed, z.Zoom)), nil
+}
+
+const defaultZoomSteps = "0:17,10:16,30:15,60:14,90:13,120:12"
+
+// ParseZoomSteps parses "speed:zoom,..." (speed in km/h) into steps sorted
+// by speed.
+func ParseZoomSteps(s string) ([]ZoomStep, error) {
+	var steps []ZoomStep
+	for _, part := range strings.Split(s, ",") {
+		speed, zoom, ok := strings.Cut(strings.TrimSpace(part), ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid step %q", part)
+		}
+		sp, err := strconv.ParseFloat(strings.TrimSpace(speed), 64)
+		if err != nil || sp < 0 || sp > 10000 {
+			return nil, fmt.Errorf("invalid speed in step %q", part)
+		}
+		z, err := strconv.Atoi(strings.TrimSpace(zoom))
+		if err != nil || z < 0 || z > 30 {
+			return nil, fmt.Errorf("invalid zoom in step %q", part)
+		}
+		steps = append(steps, ZoomStep{Speed: sp, Zoom: z})
+	}
+	sort.Slice(steps, func(i, j int) bool { return steps[i].Speed < steps[j].Speed })
+	return steps, nil
+}
+
+func envZoomSteps(key string) []ZoomStep {
+	steps, err := ParseZoomSteps(envStr(key, defaultZoomSteps))
+	if err != nil {
+		log.Printf("%s: %v, using default", key, err)
+		steps, _ = ParseZoomSteps(defaultZoomSteps)
+	}
+	return steps
+}
+
+var cssSizeRe = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(px|em|rem|pt|%)$`)
+
+func envCSSSize(key, def string) string {
+	v := envStr(key, def)
+	if !cssSizeRe.MatchString(v) {
+		log.Printf("%s: invalid css size %q, using %s", key, v, def)
+		return def
+	}
+	return v
 }
 
 func envStr(key, def string) string {
@@ -140,7 +210,7 @@ func Load() *Config {
 		velUnit = MetersPerSecond
 	}
 
-	return &Config{
+	cfg := &Config{
 		ListenAddr:     envStr("HAUK_LISTEN_ADDR", ":8080"),
 		PublicURL:      envStr("HAUK_PUBLIC_URL", "http://localhost:8080/"),
 		RedisAddr:      envStr("HAUK_REDIS_ADDR", "localhost:6379"),
@@ -172,8 +242,20 @@ func Load() *Config {
 		TrailColor:     envStr("HAUK_TRAIL_COLOR", "#d80037"),
 		OfflineTimeout:  envInt("HAUK_OFFLINE_TIMEOUT", 30),
 		RequestTimeout:  envInt("HAUK_REQUEST_TIMEOUT", 10),
+		SpeedFontSize:   envCSSSize("HAUK_SPEED_FONT_SIZE", "1.6em"),
+		AutoZoom:            envBool("HAUK_AUTO_ZOOM", true),
+		AutoZoomSteps:       envZoomSteps("HAUK_AUTO_ZOOM_STEPS"),
+		AutoZoomSmoothing:   envFloat("HAUK_AUTO_ZOOM_SMOOTHING", 0.3),
+		AutoZoomMinInterval: envFloat("HAUK_AUTO_ZOOM_MIN_INTERVAL", 10),
+		AutoZoomHysteresis:  envFloat("HAUK_AUTO_ZOOM_HYSTERESIS", 5),
+		AutoZoomResume:      envInt("HAUK_AUTO_ZOOM_RESUME", 300),
 		RateLimitAuth:   envInt("HAUK_RATE_LIMIT_AUTH", 10),
 		RateLimitAdopt:  envInt("HAUK_RATE_LIMIT_ADOPT", 10),
 		TrustProxy:      envBool("HAUK_TRUST_PROXY", true),
 	}
+	if cfg.AutoZoomSmoothing <= 0 || cfg.AutoZoomSmoothing > 1 {
+		log.Printf("HAUK_AUTO_ZOOM_SMOOTHING must be in (0, 1], using 0.3")
+		cfg.AutoZoomSmoothing = 0.3
+	}
+	return cfg
 }

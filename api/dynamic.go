@@ -13,6 +13,15 @@ type velocityUnit struct {
 	Unit          string  `json:"unit"`
 }
 
+type autoZoomConfig struct {
+	Enabled     bool              `json:"enabled"`
+	Steps       []config.ZoomStep `json:"steps"`
+	Smoothing   float64           `json:"smoothing"`
+	MinInterval float64           `json:"minInterval"`
+	Hysteresis  float64           `json:"hysteresis"`
+	Resume      int               `json:"resume"`
+}
+
 func (s *Server) handleDynamic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 
@@ -36,6 +45,15 @@ func (s *Server) handleDynamic(w http.ResponseWriter, r *http.Request) {
 	velUnitJSON, _ := json.Marshal(velUnit)
 	offlineTimeout, _ := json.Marshal(s.cfg.OfflineTimeout)
 	requestTimeout, _ := json.Marshal(s.cfg.RequestTimeout)
+	speedFontSize, _ := json.Marshal(s.cfg.SpeedFontSize)
+	autoZoom, _ := json.Marshal(autoZoomConfig{
+		Enabled:     s.cfg.AutoZoom && len(s.cfg.AutoZoomSteps) > 0,
+		Steps:       s.cfg.AutoZoomSteps,
+		Smoothing:   s.cfg.AutoZoomSmoothing,
+		MinInterval: s.cfg.AutoZoomMinInterval,
+		Hysteresis:  s.cfg.AutoZoomHysteresis,
+		Resume:      s.cfg.AutoZoomResume,
+	})
 
 	fmt.Fprintf(w, "var TILE_URI = %s;\n", tileURI)
 	fmt.Fprintf(w, "var ATTRIBUTION = %s;\n", attribution)
@@ -47,4 +65,6 @@ func (s *Server) handleDynamic(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "var VELOCITY_UNIT = %s;\n", velUnitJSON)
 	fmt.Fprintf(w, "var OFFLINE_TIMEOUT = %s;\n", offlineTimeout)
 	fmt.Fprintf(w, "var REQUEST_TIMEOUT = %s;\n", requestTimeout)
+	fmt.Fprintf(w, "var SPEED_FONT_SIZE = %s;\n", speedFontSize)
+	fmt.Fprintf(w, "var AUTO_ZOOM = %s;\n", autoZoom)
 }

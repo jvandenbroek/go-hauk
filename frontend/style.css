@@ -182,6 +182,26 @@ a:last-child > .store-icon {
     background-size: cover;
 }
 
+/* Automatic zoom toggle: filled when on, outlined when paused by a manual
+   zoom, gray when off. */
+.leaflet-bar a.leaflet-control-autozoom {
+    width: auto;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+.leaflet-bar a.autozoom-on, .leaflet-bar a.autozoom-on:hover {
+    background-color: #d80037;
+    color: #fff;
+}
+.leaflet-bar a.autozoom-paused {
+    color: #d80037;
+}
+.leaflet-bar a.autozoom-off {
+    color: #999;
+    text-decoration: line-through;
+}
+
 /** User list. **/
 .popup-list {
     max-height: 60vh;
@@ -305,19 +325,37 @@ a:last-child > .store-icon {
     margin: auto;
 }
 
-/* The velocity indicator on the marker div. */
+/* The velocity indicator on the marker div. It may grow wider than the
+   marker and stays centered below the arrow. */
 .marker p {
     font-size: 0.9em;
     color: white;
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
+    box-sizing: border-box;
+    margin-left: 50%;
+    transform: translateX(-50%);
     border-radius: 15px;
     text-align: center;
-    padding: 2px 0;
+    padding: 2px 6px;
     line-height: 100%;
     font-family: sans-serif;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: clip;
+}
+
+/* The speed itself, sized by HAUK_SPEED_FONT_SIZE. */
+.marker p > span.velocity {
+    display: inline-block;
+    font-size: var(--speed-font-size, 1.6em);
+    font-weight: bold;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+.marker p > span.velocity > span.unit {
+    font-size: 0.7em;
+    font-weight: normal;
 }
 
 /* Location data has been received recently. */

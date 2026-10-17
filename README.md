@@ -54,8 +54,22 @@ all config via environment variables:
 | HAUK_RATE_LIMIT_AUTH | 10 | max auth requests per minute per ip |
 | HAUK_RATE_LIMIT_ADOPT | 10 | max adopt requests per minute per ip |
 | HAUK_TRUST_PROXY | true | trust X-Forwarded-For (set false if not behind proxy) |
+| HAUK_SPEED_FONT_SIZE | 1.6em | size of the speed on the map markers (css size: px, em, rem, pt, %) |
+| HAUK_AUTO_ZOOM | true | speed-dependent zoom in the viewer while following a user |
+| HAUK_AUTO_ZOOM_STEPS | 0:17,10:16,30:15,60:14,90:13,120:12 | `speed:zoom` breakpoints, speed in km/h (regardless of HAUK_VELOCITY_UNIT) |
+| HAUK_AUTO_ZOOM_SMOOTHING | 0.3 | weight of the newest speed in the moving average, (0, 1], 1 = no smoothing |
+| HAUK_AUTO_ZOOM_MIN_INTERVAL | 10 | min seconds between automatic zoom changes (one zoom level per change) |
+| HAUK_AUTO_ZOOM_HYSTERESIS | 5 | km/h the average speed must pass a breakpoint by before the zoom changes |
+| HAUK_AUTO_ZOOM_RESUME | 300 | seconds after a manual zoom before auto zoom resumes, 0 = never |
 
 see `config/config.go` for full list.
+
+### auto zoom
+
+while following a user, the viewer zooms in at low speed and out at high speed.
+manually zooming (wheel, pinch, double click, +/- buttons, keyboard) pauses it;
+the `AUTO` map button shows the state (filled = on, outlined = paused, struck
+through = off) and toggles it. switching it off is remembered in the browser.
 
 ## security improvements over upstream
 

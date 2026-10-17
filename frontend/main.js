@@ -13,6 +13,11 @@ const STATE_DEAD_COLOR = '#555555';
 const EARTH_DIAMETER_KM = 6371 * 2;
 const HAV_MOD = EARTH_DIAMETER_KM * 1000;
 
+const AUTO_ZOOM_PREF_KEY = "hauk_auto_zoom";
+
+// Apply the configured size of the speed label on the markers.
+document.documentElement.style.setProperty("--speed-font-size", SPEED_FONT_SIZE);
+
 // Find preferred language.
 var locales = ['ca', 'de', 'en', 'eu', 'fr', 'it', 'nb_NO', 'nl', 'nn', 'pt_BR', 'ro', 'ru', 'tr', 'uk'];
 var prefLang = 'en';
@@ -206,12 +211,39 @@ L.control.Radar = L.Control.extend({
     }
 });
 
+// Create a toggle control for the speed-dependent automatic zoom.
+L.control.AutoZoom = L.Control.extend({
+    onAdd: function(map) {
+        var btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        var anchor = L.DomUtil.create('a', 'leaflet-control-autozoom', btn);
+
+        // Clicking the control must not count as panning the map.
+        L.DomEvent.disableClickPropagation(btn);
+
+        anchor.href = '#';
+        anchor.textContent = 'AUTO';
+        anchor.onclick = function(e) {
+            // Prevent # from appearing in URL.
+            e.preventDefault();
+            setAutoZoom(autoZoomState() != "on");
+            return false;
+        };
+        autoZoom.control = anchor;
+        updateAutoZoomControl();
+
+        return btn;
+    }
+});
+
 // Function for spawning the controls.
 L.control.locate = function(opts) {
     return new L.control.Locate(opts);
 }
 L.control.radar = function(opts) {
     return new L.control.Radar(opts);
+}
+L.control.autoZoom = function(opts) {
+    return new L.control.AutoZoom(opts);
 }
 
 var map, circleLayer, markerLayer;
@@ -237,6 +269,141 @@ function initMap() {
     map.on('mousedown', function() {
         following = null;
     });
+
+    if (AUTO_ZOOM.enabled) {
+        L.control.autoZoom({ position: 'topleft' }).addTo(map);
+
+        // Pause automatic zoom whenever the viewer zooms by hand. These are
+        // the user inputs of Leaflet's zoom handlers, so programmatic
+        // setView()/fitBounds() calls never trigger this.
+        var container = map.getContainer();
+        container.addEventListener('wheel', pauseAutoZoom, {passive: true});
+        container.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) pauseAutoZoom();
+        }, {passive: true});
+        container.addEventListener('keydown', function(e) {
+            if ("+-=_".indexOf(e.key) !== -1) pauseAutoZoom();
+        });
+        // Capture phase, as the zoom buttons stop click propagation.
+        map.zoomControl.getContainer().addEventListener('click', pauseAutoZoom, true);
+        map.on('dblclick boxzoomend', pauseAutoZoom);
+    }
+}
+
+// State of the speed-dependent automatic zoom. It is on by default (unless
+// the viewer switched it off before), and any manual zoom pauses it, either
+// for AUTO_ZOOM.resume seconds or, if that is 0, until re-enabled.
+var autoZoom = {
+    on: AUTO_ZOOM.enabled && loadAutoZoomPref() != "off",
+    pausedUntil: 0, // ms timestamp, Infinity = until re-enabled
+    lastChange: 0,  // ms timestamp of the last automatic zoom change
+    jump: true,     // whether the next change may skip zoom levels
+    control: null
+};
+
+function loadAutoZoomPref() {
+    try {
+        return localStorage.getItem(AUTO_ZOOM_PREF_KEY);
+    } catch (e) {
+        return null;
+    }
+}
+
+// Returns "on", "paused" or "off", resuming after the pause has expired.
+function autoZoomState() {
+    if (!autoZoom.on) return "off";
+    if (autoZoom.pausedUntil > 0) {
+        if (Date.now() < autoZoom.pausedUntil) return "paused";
+        autoZoom.pausedUntil = 0;
+        autoZoom.jump = true;
+        updateAutoZoomControl();
+    }
+    return "on";
+}
+
+function updateAutoZoomControl() {
+    if (autoZoom.control === null) return;
+    var state = autoZoomState();
+    autoZoom.control.className = 'leaflet-control-autozoom autozoom-' + state;
+    autoZoom.control.title = LANG["control_auto_zoom_" + state];
+}
+
+function pauseAutoZoom() {
+    if (!autoZoom.on) return;
+    autoZoom.pausedUntil = AUTO_ZOOM.resume > 0 ? Date.now() + AUTO_ZOOM.resume * 1000 : Infinity;
+    updateAutoZoomControl();
+}
+
+// Switch automatic zoom on or off by the viewer's choice, and remember it.
+function setAutoZoom(on) {
+    autoZoom.on = on;
+    autoZoom.pausedUntil = 0;
+    autoZoom.jump = true;
+    try {
+        localStorage.setItem(AUTO_ZOOM_PREF_KEY, on ? "on" : "off");
+    } catch (e) {}
+    updateAutoZoomControl();
+
+    // Zoom to the followed user right away.
+    if (!on) return;
+    for (var user in shares) {
+        if (!shares.hasOwnProperty(user)) continue;
+        if (isFollowed(user) && shares[user].points.length > 0) follow(user);
+    }
+}
+
+// Feed the latest speed (in km/h) of a user into its moving average and
+// pick the matching zoom step. A step boundary is only crossed once the
+// average is AUTO_ZOOM.hysteresis km/h past it, so noise around a boundary
+// does not flip the zoom back and forth.
+function updateZoomSpeed(share, kmh) {
+    var steps = AUTO_ZOOM.steps;
+    var stepFor = function(speed) {
+        var i = 0;
+        while (i + 1 < steps.length && speed >= steps[i + 1][0]) i++;
+        return i;
+    };
+
+    if (share.zoomSpeed === null) {
+        share.zoomSpeed = kmh;
+        share.zoomStep = stepFor(kmh);
+        return;
+    }
+    share.zoomSpeed += AUTO_ZOOM.smoothing * (kmh - share.zoomSpeed);
+    var up = stepFor(share.zoomSpeed - AUTO_ZOOM.hysteresis);
+    var down = stepFor(share.zoomSpeed + AUTO_ZOOM.hysteresis);
+    if (up > share.zoomStep) share.zoomStep = up;
+    else if (down < share.zoomStep) share.zoomStep = down;
+}
+
+// Returns the zoom level to change to for a followed user, or null to keep
+// the current zoom. Changes at most one level per AUTO_ZOOM.minInterval,
+// except right after (re)starting, when it jumps straight to the target.
+function autoZoomLevel(share) {
+    if (autoZoomState() != "on" || share.zoomStep === null) return null;
+
+    var target = AUTO_ZOOM.steps[share.zoomStep][1];
+    target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target));
+    var current = map.getZoom();
+    if (target == current) return null;
+
+    if (!autoZoom.jump) {
+        if (Date.now() - autoZoom.lastChange < AUTO_ZOOM.minInterval * 1000) return null;
+        target = current + (target > current ? 1 : -1);
+    }
+    autoZoom.jump = false;
+    autoZoom.lastChange = Date.now();
+    return target;
+}
+
+// Pan to a followed user, zooming along with its speed if applicable.
+function panToFollowed(share, point) {
+    var zoom = autoZoomLevel(share);
+    if (zoom !== null) {
+        map.setView([point.lat, point.lon], zoom);
+    } else {
+        map.panTo([point.lat, point.lon]);
+    }
 }
 
 // The leaflet markers and associated data.
@@ -379,6 +546,9 @@ if (closeUserListE !== null) {
 var showAllUsersE = document.getElementById("btn-show-all");
 if (showAllUsersE !== null) {
     showAllUsersE.addEventListener("click", function() {
+        // Stop following a single user in group shares, so the next update
+        // does not pan/zoom away from the overview again.
+        if (Object.keys(shares).length > 1) following = null;
         autoCenter();
         var userListPopupE = document.getElementById("user-list-popup");
         if (userListPopupE !== null) {
@@ -504,8 +674,14 @@ function byteArray(base64) {
 // Follow a user on the map.
 function follow(user) {
     following = shares[user].id;
+    autoZoom.jump = true;
     var last = shares[user].points[shares[user].points.length - 1];
-    map.panTo([last.lat, last.lon]);
+    panToFollowed(shares[user], last);
+}
+
+// Whether the map is following the given user.
+function isFollowed(user) {
+    return following !== null && (following === true || following == shares[user].id);
 }
 
 // Zoom and pan map to show all users.
@@ -692,12 +868,15 @@ function processUpdate(data, init) {
                 "points": [],
                 "id": Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5),
                 "listEntry": listE,
-                "state": "live"
+                "state": "live",
+                "zoomSpeed": null,
+                "zoomStep": null
             };
         }
 
         // Get the last location received.
         var lastPoint = shares[user].points.length > 0 ? shares[user].points[shares[user].points.length - 1] : null;
+        var prevPoint = lastPoint;
 
         for (var i = 0; i < users[user].length; i++) {
             var lat = users[user][i][0];
@@ -728,7 +907,7 @@ function processUpdate(data, init) {
                                     '<span id="nickname-' + shares[user].id + '"></span>' +
                                     '<span class="velocity">' +
                                         '<span id="velocity-' + shares[user].id + '">0.0</span> ' +
-                                        VELOCITY_UNIT.unit +
+                                        '<span class="unit">' + VELOCITY_UNIT.unit + '</span>' +
                                     '</span><span class="offline" id="last-seen-' + shares[user].id + '">' +
                                     '</span>' +
                                 '</p>' +
@@ -798,6 +977,11 @@ function processUpdate(data, init) {
             eVelocity.textContent = vel.toFixed(1);;
         }
 
+        // Track the speed for automatic zoom, once per new location.
+        if (AUTO_ZOOM.enabled && lastPoint !== prevPoint) {
+            updateZoomSpeed(shares[user], vel / VELOCITY_UNIT.mpsMultiplier * 3.6);
+        }
+
         // Flag that the first location has been received, for map centering.
         if (lastPoint !== null && !hasReceivedFirst) {
             hasReceivedFirst = true;
@@ -805,9 +989,9 @@ function processUpdate(data, init) {
 
         // Move the marker if needed.
         if (lastPoint !== null && !multiUser && following !== null) {
-            map.panTo([lastPoint.lat, lastPoint.lon]);
+            panToFollowed(shares[user], lastPoint);
         } else if (lastPoint !== null && multiUser && following == shares[user].id) {
-            map.panTo([lastPoint.lat, lastPoint.lon]);
+            panToFollowed(shares[user], lastPoint);
         }
 
         // Rotate the marker to the direction of movement.

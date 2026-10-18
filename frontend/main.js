@@ -93,7 +93,7 @@ function init() {
         if (storeIconGplayE !== null) storeIconGplayE.src = LANG["google_play_badge_url"];
     } else {
         // Attempt to fetch location data from the server once.
-        getJSON("./api/fetch.php?id=" + id, function(data) {
+        getJSON("./api/fetch.php?id=" + id + "&v=" + VIEWER_ID, function(data) {
             // Initialize the Leaflet map.
             initMap();
             noGPS.style.display = "block";
@@ -678,6 +678,17 @@ if (closeUserDetailsE !== null) {
 var fetchIntv;
 var countIntv;
 
+// Random id so the server can count distinct viewers of a share.
+var VIEWER_ID = Math.random().toString(36).slice(2, 12);
+
+// Shows the number of people currently watching the share.
+function updateViewers(n) {
+    var e = document.getElementById("viewers");
+    if (e === null || typeof n !== "number" || n < 1) return;
+    e.textContent = "\u{1F441} " + n;
+    e.style.display = "block";
+}
+
 function setNewInterval(expire, interval, serverTime) {
     var countdownE = document.getElementById("countdown");
     var timeOffset = Date.now() / 1000 - serverTime;
@@ -717,7 +728,7 @@ function setNewInterval(expire, interval, serverTime) {
         }
 
         // Start incremental fetch
-        getJSON("./api/fetch.php?id=" + id + "&since=" + getOldestPointTime(), function(data) {
+        getJSON("./api/fetch.php?id=" + id + "&v=" + VIEWER_ID + "&since=" + getOldestPointTime(), function(data) {
             // Recreate the interval timers if the interval or expiration
             // change.
             if (data.expire != expire || data.interval != interval) {
@@ -810,6 +821,7 @@ function autoCenter() {
 
 // Parses the data returned from ./api/fetch.php and updates the map marker.
 function processUpdate(data, init) {
+    updateViewers(data.viewers);
     var users = {};
     var multiUser = false;
     if (data.type == SHARE_TYPE_ALONE) {

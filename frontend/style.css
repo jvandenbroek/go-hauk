@@ -283,6 +283,21 @@ a:last-child > .store-icon {
     margin: 0 23px;
 }
 
+/* Number of current viewers, below the notch. */
+#viewers {
+    display: none;
+    position: fixed;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    padding: 1px 8px;
+    border-radius: 0 0 8px 8px;
+    background-color: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 0.9em;
+}
+
 /* Change the color if client is offline. */
 #notch.offline div.t-left {
     border-color: transparent rgba(165,0,42,0.5) transparent transparent;

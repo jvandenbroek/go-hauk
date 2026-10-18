@@ -18,6 +18,7 @@ type soloResponse struct {
 	Points     [][]any   `json:"points"`
 	Encrypted  bool      `json:"encrypted"`
 	Salt       string    `json:"salt"`
+	Viewers    int       `json:"viewers"`
 }
 
 type groupResponse struct {
@@ -26,6 +27,7 @@ type groupResponse struct {
 	ServerTime float64             `json:"serverTime"`
 	Interval   float64             `json:"interval"`
 	Points     map[string][][]any  `json:"points"`
+	Viewers    int                 `json:"viewers"`
 }
 
 func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +51,8 @@ func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Invalid session!")
 		return
 	}
+
+	viewers := s.viewers.touch(id, r.URL.Query().Get("v"))
 
 	w.Header().Set("Content-Type", "text/json")
 	now := float64(time.Now().UnixNano()) / 1e9
@@ -77,6 +81,7 @@ func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request) {
 			Points:     session.GetPoints(since),
 			Encrypted:  session.Encrypted(),
 			Salt:       session.Salt(),
+			Viewers:    viewers,
 		}
 		if resp.Points == nil {
 			resp.Points = [][]any{}
@@ -102,6 +107,7 @@ func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request) {
 			ServerTime: now,
 			Interval:   share.GetAutoInterval(ctx, s.cfg.MaxCachedPts),
 			Points:     points,
+			Viewers:    viewers,
 		}
 		json.NewEncoder(w).Encode(resp)
 	}

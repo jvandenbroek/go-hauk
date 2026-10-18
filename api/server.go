@@ -26,6 +26,7 @@ type Server struct {
 	linkgen     *linkgen.Generator
 	rlAuth      *ratelimit.Limiter
 	rlAdopt     *ratelimit.Limiter
+	viewers     *viewerTracker
 }
 
 func NewServer(cfg *config.Config, s store.Store) *Server {
@@ -33,6 +34,7 @@ func NewServer(cfg *config.Config, s store.Store) *Server {
 		mux:     http.NewServeMux(),
 		cfg:     cfg,
 		store:   s,
+		viewers: newViewerTracker(),
 		linkgen: linkgen.New(s, cfg.LinkStyle),
 		rlAuth:  ratelimit.New(cfg.RateLimitAuth, time.Minute, cfg.TrustProxy),
 		rlAdopt: ratelimit.New(cfg.RateLimitAdopt, time.Minute, cfg.TrustProxy),

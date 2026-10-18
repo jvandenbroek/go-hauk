@@ -95,9 +95,13 @@ type Config struct {
 	AutoZoom            bool
 	AutoZoomSteps       []ZoomStep
 	AutoZoomSmoothing   float64 // EMA weight of the newest speed sample, (0, 1]
-	AutoZoomMinInterval float64 // seconds between automatic zoom changes
+	AutoZoomMinInterval float64 // seconds between automatic zoom-in changes
+	AutoZoomOutInterval float64 // seconds between automatic zoom-out changes
+	AutoZoomJump        int     // zoom difference to jump straight to the target, 0 = never
+	AutoZoomMaxAccuracy float64 // ignore speeds of points less accurate than this (m), 0 = off
 	AutoZoomHysteresis  float64 // km/h margin around step breakpoints
 	AutoZoomResume      int     // seconds after manual zoom before auto zoom resumes, 0 = never
+	Lookahead           float64 // shift followed user against travel direction, fraction of map size
 
 	// rate limiting
 	RateLimitAuth   int  // requests per minute for auth endpoints
@@ -249,9 +253,18 @@ func Load() *Config {
 		AutoZoomMinInterval: envFloat("HAUK_AUTO_ZOOM_MIN_INTERVAL", 3),
 		AutoZoomHysteresis:  envFloat("HAUK_AUTO_ZOOM_HYSTERESIS", 5),
 		AutoZoomResume:      envInt("HAUK_AUTO_ZOOM_RESUME", 300),
+		AutoZoomJump:        envInt("HAUK_AUTO_ZOOM_JUMP_THRESHOLD", 2),
+		AutoZoomMaxAccuracy: envFloat("HAUK_AUTO_ZOOM_MAX_ACCURACY", 30),
+		Lookahead:           envFloat("HAUK_LOOKAHEAD", 0),
 		RateLimitAuth:   envInt("HAUK_RATE_LIMIT_AUTH", 10),
 		RateLimitAdopt:  envInt("HAUK_RATE_LIMIT_ADOPT", 10),
 		TrustProxy:      envBool("HAUK_TRUST_PROXY", true),
+	}
+	// zooming out should not be slower than zooming in
+	cfg.AutoZoomOutInterval = envFloat("HAUK_AUTO_ZOOM_OUT_INTERVAL", min(5, cfg.AutoZoomMinInterval))
+	if cfg.Lookahead < 0 || cfg.Lookahead > 0.45 {
+		log.Printf("HAUK_LOOKAHEAD must be in [0, 0.45], disabling")
+		cfg.Lookahead = 0
 	}
 	if cfg.AutoZoomSmoothing <= 0 || cfg.AutoZoomSmoothing > 1 {
 		log.Printf("HAUK_AUTO_ZOOM_SMOOTHING must be in (0, 1], using 0.3")

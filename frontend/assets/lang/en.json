@@ -23,6 +23,7 @@
     "control_auto_zoom_on": "Auto zoom on: zooms with speed (tap to turn off)",
     "control_auto_zoom_paused": "Auto zoom paused after manual zoom (tap to resume)",
     "control_auto_zoom_off": "Auto zoom off (tap to turn on)",
+    "auto_zoom_paused": "Auto zoom paused",
     "last_update_seconds": "{{time}}s ago",
     "last_update_minutes": "{{time}}m ago",
     "last_update_hours": "{{time}}h ago",

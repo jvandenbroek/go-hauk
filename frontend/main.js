@@ -228,7 +228,11 @@ L.control.AutoZoom = L.Control.extend({
             setAutoZoom(autoZoomState() != "on");
             return false;
         };
+        // Badge shown next to the control while paused by a manual zoom.
+        var badge = L.DomUtil.create('span', 'autozoom-badge hidden', btn);
+        badge.onclick = anchor.onclick;
         autoZoom.control = anchor;
+        autoZoom.badge = badge;
         updateAutoZoomControl();
 
         return btn;
@@ -250,7 +254,8 @@ var map, circleLayer, markerLayer;
 
 function initMap() {
     // Create a Leaflet map.
-    map = L.map('map').setView([0, 0], DEFAULT_ZOOM);
+    // Allow animating multi-level auto zoom jumps.
+    map = L.map('map', {zoomAnimationThreshold: 8}).setView([0, 0], DEFAULT_ZOOM);
     L.tileLayer(TILE_URI, {
         attribution: ATTRIBUTION,
         maxZoom: MAX_ZOOM
@@ -265,12 +270,12 @@ function initMap() {
     circleLayer = L.layerGroup().addTo(map);
     markerLayer = L.layerGroup().addTo(map);
 
-    // Unfollow the user when the map is panned.
-    map.on('mousedown', function() {
+    // Unfollow the user when the map is panned (dragstart covers touch).
+    map.on('mousedown dragstart', function() {
         following = null;
     });
 
-    if (AUTO_ZOOM.enabled) {
+    if (AUTO_ZOOM_AVAILABLE) {
         L.control.autoZoom({ position: 'topleft' }).addTo(map);
 
         // Pause automatic zoom whenever the viewer zooms by hand. These are
@@ -290,16 +295,55 @@ function initMap() {
     }
 }
 
-// State of the speed-dependent automatic zoom. It is on by default (unless
-// the viewer switched it off before), and any manual zoom pauses it, either
-// for AUTO_ZOOM.resume seconds or, if that is 0, until re-enabled.
+// Per-viewer overrides from the share link, after the share ID or in the
+// hash, e.g. ?ABCD-1234&autozoom=0&lookahead=0.25 or ?ABCD-1234#zoom=16.
+var viewerParams = {};
+location.search.substr(1).split("&").slice(1).concat(location.hash.substr(1).split("&")).forEach(function(part) {
+    var kv = part.split("=");
+    if (kv[0] !== "") viewerParams[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || "");
+});
+
+// Whether auto zoom can be used at all (zoom steps are configured).
+var AUTO_ZOOM_AVAILABLE = AUTO_ZOOM.steps !== null && AUTO_ZOOM.steps.length > 0;
+
+// Fixed zoom level requested by the viewer (?zoom=16), disables auto zoom.
+var fixedZoom = parseInt(viewerParams["zoom"], 10);
+fixedZoom = isNaN(fixedZoom) ? null : Math.max(0, Math.min(MAX_ZOOM, fixedZoom));
+
+// Look-ahead as a fraction of the map size (?lookahead=0.25).
+var lookahead = parseFloat(viewerParams["lookahead"]);
+lookahead = isNaN(lookahead) ? LOOKAHEAD : Math.max(0, Math.min(0.45, lookahead));
+
+// Ignore the speed of points older than this many share intervals (but at
+// least STALE_MIN_SECONDS) for auto zoom.
+const STALE_INTERVALS = 3;
+const STALE_MIN_SECONDS = 10;
+
+// Only take the direction of travel from points moving at least this fast.
+const HEADING_MIN_KMH = 5;
+
+// State of the speed-dependent automatic zoom. Its initial state is, in
+// order of precedence: the share link (?zoom=, ?autozoom=), the viewer's
+// last choice, the server default. Any manual zoom pauses it, either for
+// AUTO_ZOOM.resume seconds or, if that is 0, until re-enabled.
 var autoZoom = {
-    on: AUTO_ZOOM.enabled && loadAutoZoomPref() != "off",
+    on: initialAutoZoom(),
     pausedUntil: 0, // ms timestamp, Infinity = until re-enabled
     lastChange: 0,  // ms timestamp of the last automatic zoom change
     jump: true,     // whether the next change may skip zoom levels
-    control: null
+    control: null,
+    badge: null,
+    timer: null     // ticks the pause countdown
 };
+
+function initialAutoZoom() {
+    if (!AUTO_ZOOM_AVAILABLE || fixedZoom !== null) return false;
+    var param = viewerParams["autozoom"];
+    if (param !== undefined) return ["1", "on", "true"].indexOf(param) !== -1;
+    var pref = loadAutoZoomPref();
+    if (pref !== null) return pref == "on";
+    return AUTO_ZOOM.enabled;
+}
 
 function loadAutoZoomPref() {
     try {
@@ -326,6 +370,19 @@ function updateAutoZoomControl() {
     var state = autoZoomState();
     autoZoom.control.className = 'leaflet-control-autozoom autozoom-' + state;
     autoZoom.control.title = LANG["control_auto_zoom_" + state];
+
+    // Show the pause next to the control, counting down to the resume.
+    var text = LANG["auto_zoom_paused"];
+    if (state == "paused" && autoZoom.pausedUntil !== Infinity) {
+        var s = Math.ceil((autoZoom.pausedUntil - Date.now()) / 1000);
+        text += " · " + Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + s % 60;
+        if (autoZoom.timer === null) autoZoom.timer = setInterval(updateAutoZoomControl, 1000);
+    } else if (autoZoom.timer !== null) {
+        clearInterval(autoZoom.timer);
+        autoZoom.timer = null;
+    }
+    autoZoom.badge.textContent = text;
+    autoZoom.badge.className = 'autozoom-badge' + (state == "paused" ? '' : ' hidden');
 }
 
 function pauseAutoZoom() {
@@ -350,6 +407,13 @@ function setAutoZoom(on) {
         if (!shares.hasOwnProperty(user)) continue;
         if (isFollowed(user) && shares[user].points.length > 0) follow(user);
     }
+}
+
+// Whether a point's speed is reliable enough to steer auto zoom: accurate
+// enough and not stale (e.g. history loaded when opening the share).
+function usableForZoom(point, data) {
+    if (AUTO_ZOOM.maxAccuracy > 0 && point.acc !== null && point.acc > AUTO_ZOOM.maxAccuracy) return false;
+    return point.time >= data.serverTime - Math.max(STALE_INTERVALS * data.interval, STALE_MIN_SECONDS);
 }
 
 // Feed the latest speed (in km/h) of a user into its moving average and
@@ -378,32 +442,76 @@ function updateZoomSpeed(share, kmh) {
 }
 
 // Returns the zoom level to change to for a followed user, or null to keep
-// the current zoom. Changes at most one level per AUTO_ZOOM.minInterval,
-// except right after (re)starting, when it jumps straight to the target.
+// the current zoom. Zooming in waits AUTO_ZOOM.inInterval since the last
+// change, zooming out AUTO_ZOOM.outInterval. It moves one level per change,
+// or straight to the target if it is AUTO_ZOOM.jump levels or more away,
+// or right after (re)starting.
 function autoZoomLevel(share) {
-    if (autoZoomState() != "on" || share.zoomStep === null) return null;
+    var current = map.getZoom();
+    if (autoZoomState() != "on" || share.zoomStep === null) {
+        // A fixed zoom from the share link applies when starting to follow.
+        if (fixedZoom === null || autoZoom.on || !autoZoom.jump) return null;
+        autoZoom.jump = false;
+        return fixedZoom != current ? fixedZoom : null;
+    }
 
     var target = AUTO_ZOOM.steps[share.zoomStep][1];
     target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target));
-    var current = map.getZoom();
     if (target == current) return null;
 
     if (!autoZoom.jump) {
-        if (Date.now() - autoZoom.lastChange < AUTO_ZOOM.minInterval * 1000) return null;
-        target = current + (target > current ? 1 : -1);
+        var wait = target > current ? AUTO_ZOOM.inInterval : AUTO_ZOOM.outInterval;
+        if (Date.now() - autoZoom.lastChange < wait * 1000) return null;
+        if (AUTO_ZOOM.jump <= 0 || Math.abs(target - current) < AUTO_ZOOM.jump) {
+            target = current + (target > current ? 1 : -1);
+        }
     }
     autoZoom.jump = false;
     autoZoom.lastChange = Date.now();
     return target;
 }
 
+// Track the smoothed direction of travel of a user for the look-ahead. Only
+// points moving at HEADING_MIN_KMH or more count, so the last direction is
+// kept while stopped and GPS noise does not spin it around.
+function updateHeading(share, from, to) {
+    var dt = to.time - from.time;
+    if (dt <= 0) return;
+    if (AUTO_ZOOM.maxAccuracy > 0 && to.acc !== null && to.acc > AUTO_ZOOM.maxAccuracy) return;
+    var mps = to.spd !== null ? to.spd : distance(from, to) * HAV_MOD / dt;
+    if (mps * 3.6 < HEADING_MIN_KMH) return;
+
+    var rad = angle(from, to) * Math.PI / 180;
+    if (share.heading === null) {
+        share.heading = {x: Math.sin(rad), y: Math.cos(rad)};
+    } else {
+        share.heading.x += 0.5 * (Math.sin(rad) - share.heading.x);
+        share.heading.y += 0.5 * (Math.cos(rad) - share.heading.y);
+    }
+}
+
+// The map center for following a user at the given zoom: the user itself,
+// or with look-ahead a point ahead of it in the direction of travel, so the
+// user sits off-center and more of the road ahead is visible.
+function followCenter(share, point, zoom) {
+    var latlng = L.latLng(point.lat, point.lon);
+    if (!(lookahead > 0) || share.heading === null) return latlng;
+    var len = Math.sqrt(share.heading.x * share.heading.x + share.heading.y * share.heading.y);
+    if (len < 0.1) return latlng;
+
+    var size = map.getSize();
+    var offset = L.point(share.heading.x / len * lookahead * size.x, -share.heading.y / len * lookahead * size.y);
+    return map.unproject(map.project(latlng, zoom).add(offset), zoom);
+}
+
 // Pan to a followed user, zooming along with its speed if applicable.
 function panToFollowed(share, point) {
     var zoom = autoZoomLevel(share);
+    var center = followCenter(share, point, zoom !== null ? zoom : map.getZoom());
     if (zoom !== null) {
-        map.setView([point.lat, point.lon], zoom);
+        map.setView(center, zoom);
     } else {
-        map.panTo([point.lat, point.lon]);
+        map.panTo(center);
     }
 }
 
@@ -412,7 +520,7 @@ var shares = {};
 
 // Retrieve the sharing link ID from the URL. E.g.
 // https://example.com/?ABCD-1234 --> "ABCD-1234"
-var id = location.href.substr(location.href.indexOf("?") + 1);
+var id = location.search.substr(1);
 if (id.indexOf("&") !== -1) id = id.substr(0, id.indexOf("&"));
 
 // Whether the "offline" popup has appeared when the browser is offline.
@@ -871,7 +979,8 @@ function processUpdate(data, init) {
                 "listEntry": listE,
                 "state": "live",
                 "zoomSpeed": null,
-                "zoomStep": null
+                "zoomStep": null,
+                "heading": null
             };
         }
 
@@ -934,7 +1043,9 @@ function processUpdate(data, init) {
                     shares[user].circle.setLatLng([lat, lon]);
                     if (acc !== null) shares[user].circle.setRadius(acc);
                 }
-                shares[user].points.push({lat: lat, lon: lon, line: line, time: time, spd: spd, acc: acc});
+                var newPoint = {lat: lat, lon: lon, line: line, time: time, spd: spd, acc: acc};
+                if (lastPoint !== null) updateHeading(shares[user], lastPoint, newPoint);
+                shares[user].points.push(newPoint);
                 lastPoint = shares[user].points[shares[user].points.length - 1];
             }
         }
@@ -978,8 +1089,8 @@ function processUpdate(data, init) {
             eVelocity.textContent = vel.toFixed(1);;
         }
 
-        // Track the speed for automatic zoom, once per new location.
-        if (AUTO_ZOOM.enabled && lastPoint !== prevPoint) {
+        // Track the speed for automatic zoom, once per new usable location.
+        if (AUTO_ZOOM_AVAILABLE && lastPoint !== prevPoint && usableForZoom(lastPoint, data)) {
             updateZoomSpeed(shares[user], vel / VELOCITY_UNIT.mpsMultiplier * 3.6);
         }
 
@@ -1081,6 +1192,7 @@ function processUpdate(data, init) {
         // Auto-follow single-user shares.
         if (!multiUser) {
             following = true;
+            panToFollowed(shares[""], shares[""].points[shares[""].points.length - 1]);
         }
     }
 }

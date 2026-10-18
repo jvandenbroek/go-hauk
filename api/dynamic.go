@@ -17,7 +17,10 @@ type autoZoomConfig struct {
 	Enabled     bool              `json:"enabled"`
 	Steps       []config.ZoomStep `json:"steps"`
 	Smoothing   float64           `json:"smoothing"`
-	MinInterval float64           `json:"minInterval"`
+	InInterval  float64           `json:"inInterval"`
+	OutInterval float64           `json:"outInterval"`
+	Jump        int               `json:"jump"`
+	MaxAccuracy float64           `json:"maxAccuracy"`
 	Hysteresis  float64           `json:"hysteresis"`
 	Resume      int               `json:"resume"`
 }
@@ -46,11 +49,15 @@ func (s *Server) handleDynamic(w http.ResponseWriter, r *http.Request) {
 	offlineTimeout, _ := json.Marshal(s.cfg.OfflineTimeout)
 	requestTimeout, _ := json.Marshal(s.cfg.RequestTimeout)
 	speedFontSize, _ := json.Marshal(s.cfg.SpeedFontSize)
+	lookahead, _ := json.Marshal(s.cfg.Lookahead)
 	autoZoom, _ := json.Marshal(autoZoomConfig{
 		Enabled:     s.cfg.AutoZoom && len(s.cfg.AutoZoomSteps) > 0,
 		Steps:       s.cfg.AutoZoomSteps,
 		Smoothing:   s.cfg.AutoZoomSmoothing,
-		MinInterval: s.cfg.AutoZoomMinInterval,
+		InInterval:  s.cfg.AutoZoomMinInterval,
+		OutInterval: s.cfg.AutoZoomOutInterval,
+		Jump:        s.cfg.AutoZoomJump,
+		MaxAccuracy: s.cfg.AutoZoomMaxAccuracy,
 		Hysteresis:  s.cfg.AutoZoomHysteresis,
 		Resume:      s.cfg.AutoZoomResume,
 	})
@@ -67,4 +74,5 @@ func (s *Server) handleDynamic(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "var REQUEST_TIMEOUT = %s;\n", requestTimeout)
 	fmt.Fprintf(w, "var SPEED_FONT_SIZE = %s;\n", speedFontSize)
 	fmt.Fprintf(w, "var AUTO_ZOOM = %s;\n", autoZoom)
+	fmt.Fprintf(w, "var LOOKAHEAD = %s;\n", lookahead)
 }

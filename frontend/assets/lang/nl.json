@@ -33,6 +33,7 @@
     "control_auto_zoom_on": "Automatisch zoomen aan: zoomt mee met snelheid (tik om uit te zetten)",
     "control_auto_zoom_paused": "Automatisch zoomen gepauzeerd na handmatig zoomen (tik om te hervatten)",
     "control_auto_zoom_off": "Automatisch zoomen uit (tik om aan te zetten)",
+    "auto_zoom_paused": "Auto zoom gepauzeerd",
     "dialog_user_navigate": "Navigeer naar",
     "dialog_user_follow": "Toon op kaart",
     "dialog_active_head": "Actieve gebruikers"

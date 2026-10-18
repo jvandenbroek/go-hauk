@@ -58,9 +58,13 @@ all config via environment variables:
 | HAUK_AUTO_ZOOM | true | speed-dependent zoom in the viewer while following a user |
 | HAUK_AUTO_ZOOM_STEPS | 0:17,10:16,30:15,60:14,90:13,120:12 | `speed:zoom` breakpoints, speed in km/h (regardless of HAUK_VELOCITY_UNIT) |
 | HAUK_AUTO_ZOOM_SMOOTHING | 0.3 | weight of the newest speed in the moving average, (0, 1], 1 = no smoothing |
-| HAUK_AUTO_ZOOM_MIN_INTERVAL | 3 | min seconds between automatic zoom changes (one zoom level per change) |
+| HAUK_AUTO_ZOOM_MIN_INTERVAL | 3 | min seconds before zooming in after an automatic zoom change |
+| HAUK_AUTO_ZOOM_OUT_INTERVAL | 5, or MIN_INTERVAL if lower | min seconds before zooming out after an automatic zoom change |
+| HAUK_AUTO_ZOOM_JUMP_THRESHOLD | 2 | zoom levels from the target at which it zooms straight there instead of one level per change, 0 = always one level |
+| HAUK_AUTO_ZOOM_MAX_ACCURACY | 30 | ignore speeds of points with a worse GPS accuracy (m), 0 = off; points older than 3 share intervals (min 10 s) are ignored too |
 | HAUK_AUTO_ZOOM_HYSTERESIS | 5 | km/h the average speed must exceed a breakpoint by before zooming out (zooming in happens as soon as it drops below) |
 | HAUK_AUTO_ZOOM_RESUME | 300 | seconds after a manual zoom before auto zoom resumes, 0 = never |
+| HAUK_LOOKAHEAD | 0 | while following, shift the user against the direction of travel by this fraction of the map size (e.g. 0.25) to show more of the road ahead, 0 = off, max 0.45 |
 
 see `config/config.go` for full list.
 
@@ -69,7 +73,20 @@ see `config/config.go` for full list.
 while following a user, the viewer zooms in at low speed and out at high speed.
 manually zooming (wheel, pinch, double click, +/- buttons, keyboard) pauses it;
 the `AUTO` map button shows the state (filled = on, outlined = paused, struck
-through = off) and toggles it. switching it off is remembered in the browser.
+through = off) and toggles it; while paused, a label next to it counts down to
+the resume. switching it off is remembered in the browser. `HAUK_AUTO_ZOOM=false`
+only makes it off by default, viewers can still turn it on.
+
+viewers can override the server defaults in the share link, after the share
+id or in the hash:
+
+| parameter | example | effect |
+|-----------|---------|--------|
+| autozoom | `?ABCD-1234&autozoom=0` | auto zoom off (`1` = on), takes precedence over the remembered choice |
+| zoom | `?ABCD-1234&zoom=16` | fixed zoom level while following, disables auto zoom |
+| lookahead | `?ABCD-1234&lookahead=0.25` | look-ahead fraction, `0` = off |
+
+e.g. `https://hauk.example.com/?ABCD-1234#autozoom=0&lookahead=0.2`.
 
 ## security improvements over upstream
 

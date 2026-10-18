@@ -353,9 +353,10 @@ function setAutoZoom(on) {
 }
 
 // Feed the latest speed (in km/h) of a user into its moving average and
-// pick the matching zoom step. A step boundary is only crossed once the
-// average is AUTO_ZOOM.hysteresis km/h past it, so noise around a boundary
-// does not flip the zoom back and forth.
+// pick the matching zoom step. Zooming out (faster) only happens once the
+// average is AUTO_ZOOM.hysteresis km/h above a boundary, zooming in as soon
+// as it drops below it, so noise around a boundary does not flip the zoom
+// back and forth while slow speeds still reach the closest zoom.
 function updateZoomSpeed(share, kmh) {
     var steps = AUTO_ZOOM.steps;
     var stepFor = function(speed) {
@@ -371,7 +372,7 @@ function updateZoomSpeed(share, kmh) {
     }
     share.zoomSpeed += AUTO_ZOOM.smoothing * (kmh - share.zoomSpeed);
     var up = stepFor(share.zoomSpeed - AUTO_ZOOM.hysteresis);
-    var down = stepFor(share.zoomSpeed + AUTO_ZOOM.hysteresis);
+    var down = stepFor(share.zoomSpeed);
     if (up > share.zoomStep) share.zoomStep = up;
     else if (down < share.zoomStep) share.zoomStep = down;
 }

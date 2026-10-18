@@ -246,7 +246,7 @@ func Load() *Config {
 		AutoZoom:            envBool("HAUK_AUTO_ZOOM", true),
 		AutoZoomSteps:       envZoomSteps("HAUK_AUTO_ZOOM_STEPS"),
 		AutoZoomSmoothing:   envFloat("HAUK_AUTO_ZOOM_SMOOTHING", 0.3),
-		AutoZoomMinInterval: envFloat("HAUK_AUTO_ZOOM_MIN_INTERVAL", 10),
+		AutoZoomMinInterval: envFloat("HAUK_AUTO_ZOOM_MIN_INTERVAL", 3),
 		AutoZoomHysteresis:  envFloat("HAUK_AUTO_ZOOM_HYSTERESIS", 5),
 		AutoZoomResume:      envInt("HAUK_AUTO_ZOOM_RESUME", 300),
 		RateLimitAuth:   envInt("HAUK_RATE_LIMIT_AUTH", 10),

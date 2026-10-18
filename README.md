@@ -58,8 +58,8 @@ all config via environment variables:
 | HAUK_AUTO_ZOOM | true | speed-dependent zoom in the viewer while following a user |
 | HAUK_AUTO_ZOOM_STEPS | 0:17,10:16,30:15,60:14,90:13,120:12 | `speed:zoom` breakpoints, speed in km/h (regardless of HAUK_VELOCITY_UNIT) |
 | HAUK_AUTO_ZOOM_SMOOTHING | 0.3 | weight of the newest speed in the moving average, (0, 1], 1 = no smoothing |
-| HAUK_AUTO_ZOOM_MIN_INTERVAL | 10 | min seconds between automatic zoom changes (one zoom level per change) |
-| HAUK_AUTO_ZOOM_HYSTERESIS | 5 | km/h the average speed must pass a breakpoint by before the zoom changes |
+| HAUK_AUTO_ZOOM_MIN_INTERVAL | 3 | min seconds between automatic zoom changes (one zoom level per change) |
+| HAUK_AUTO_ZOOM_HYSTERESIS | 5 | km/h the average speed must exceed a breakpoint by before zooming out (zooming in happens as soon as it drops below) |
 | HAUK_AUTO_ZOOM_RESUME | 300 | seconds after a manual zoom before auto zoom resumes, 0 = never |
 
 see `config/config.go` for full list.

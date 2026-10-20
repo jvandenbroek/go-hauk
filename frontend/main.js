@@ -681,10 +681,39 @@ var countIntv;
 // Random id so the server can count distinct viewers of a share.
 var VIEWER_ID = Math.random().toString(36).slice(2, 12);
 
-// Shows the number of people currently watching the share.
+var lastViewers = null;
+var audioCtx = null;
+
+// Short, quiet sine blip. Rising for a viewer joining, falling for one leaving.
+function playViewerTone(up) {
+    try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        var t = audioCtx.currentTime;
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(up ? 660 : 880, t);
+        osc.frequency.exponentialRampToValueAtTime(up ? 990 : 440, t + 0.12);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.16);
+    } catch (err) {
+        // no audio support or blocked by autoplay policy: stay silent
+    }
+}
+
+// Shows the number of people currently watching the share and sounds when it changes.
 function updateViewers(n) {
+    if (typeof n !== "number") return;
+    if (lastViewers !== null && n !== lastViewers) playViewerTone(n > lastViewers);
+    lastViewers = n;
     var e = document.getElementById("viewers");
-    if (e === null || typeof n !== "number" || n < 1) return;
+    if (e === null || n < 1) return;
     e.textContent = "\u{1F441} " + n;
     e.style.display = "block";
 }

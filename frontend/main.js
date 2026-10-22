@@ -711,7 +711,7 @@ function playViewerTone(up) {
         osc.frequency.setValueAtTime(up ? 660 : 880, t);
         osc.frequency.exponentialRampToValueAtTime(up ? 990 : 440, t + 0.12);
         gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
         osc.connect(gain);
         gain.connect(audioCtx.destination);

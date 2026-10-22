@@ -133,4 +133,24 @@ func TestMemoryStore(t *testing.T) {
 			t.Errorf("expected 2 points, got: %d", len(result.Points))
 		}
 	})
+
+	t.Run("list push trim range delete", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			if err := m.ListPush(ctx, "l", i, 3, time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		all, _ := m.ListRange(ctx, "l", 0, -1)
+		if len(all) != 3 || string(all[0]) != "2" || string(all[2]) != "4" {
+			t.Errorf("unexpected list: %s", all)
+		}
+		tail, _ := m.ListRange(ctx, "l", -2, -1)
+		if len(tail) != 2 || string(tail[0]) != "3" {
+			t.Errorf("unexpected tail: %s", tail)
+		}
+		m.Delete(ctx, "l")
+		if got, _ := m.ListRange(ctx, "l", 0, -1); len(got) != 0 {
+			t.Error("expected list deleted")
+		}
+	})
 }

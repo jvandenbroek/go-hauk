@@ -126,6 +126,23 @@ func TestRedisStore(t *testing.T) {
 		}
 	})
 
+	t.Run("list push trim range delete", func(t *testing.T) {
+		r.Delete(ctx, "list-test")
+		for i := 0; i < 5; i++ {
+			if err := r.ListPush(ctx, "list-test", i, 3, time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		all, _ := r.ListRange(ctx, "list-test", 0, -1)
+		if len(all) != 3 || string(all[0]) != "2" || string(all[2]) != "4" {
+			t.Errorf("unexpected list: %s", all)
+		}
+		r.Delete(ctx, "list-test")
+		if got, _ := r.ListRange(ctx, "list-test", 0, -1); len(got) != 0 {
+			t.Error("expected list deleted")
+		}
+	})
+
 	t.Run("key prefixing", func(t *testing.T) {
 		// keys should be prefixed
 		r.Set(ctx, "prefix-test", "value", time.Now().Add(time.Hour))

@@ -213,7 +213,11 @@ func (g *GroupShare) GetAllPoints(ctx context.Context, since float64, maxPts int
 		if err != nil {
 			continue
 		}
-		points[nick] = sess.GetPoints(since)
+		pts, err := sess.GetPoints(ctx, since)
+		if err != nil {
+			continue
+		}
+		points[nick] = pts
 	}
 	return points, nil
 }

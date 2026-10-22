@@ -73,12 +73,18 @@ func (s *Server) handleFetch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		pts, err := session.GetPoints(ctx, since)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		resp := soloResponse{
 			Type:       share.Type(),
 			Expire:     share.Expire().Unix(),
 			ServerTime: now,
 			Interval:   session.Interval(),
-			Points:     session.GetPoints(since),
+			Points:     pts,
 			Encrypted:  session.Encrypted(),
 			Salt:       session.Salt(),
 			Viewers:    viewers,

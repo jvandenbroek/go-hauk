@@ -15,6 +15,12 @@ type Store interface {
 	SetTTL(ctx context.Context, key string, v any, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) (bool, error)
+	// ListPush appends v to the list at key, keeps only the last maxLen
+	// entries and sets the list expiry. Only the new element is written.
+	ListPush(ctx context.Context, key string, v any, maxLen int, expireAt time.Time) error
+	// ListRange returns elements start..stop inclusive; negative indices count
+	// from the tail (-1 = last), like Redis LRANGE. Missing key = empty.
+	ListRange(ctx context.Context, key string, start, stop int) ([]json.RawMessage, error)
 }
 
 type Redis struct {
@@ -107,6 +113,35 @@ func (r *Redis) Delete(ctx context.Context, key string) error {
 func (r *Redis) Exists(ctx context.Context, key string) (bool, error) {
 	n, err := r.client.Exists(ctx, r.key(key)).Result()
 	return n > 0, err
+}
+
+func (r *Redis) ListPush(ctx context.Context, key string, v any, maxLen int, expireAt time.Time) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	k := r.key(key)
+	_, err = r.client.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		p.RPush(ctx, k, data)
+		if maxLen > 0 {
+			p.LTrim(ctx, k, int64(-maxLen), -1)
+		}
+		p.ExpireAt(ctx, k, expireAt)
+		return nil
+	})
+	return err
+}
+
+func (r *Redis) ListRange(ctx context.Context, key string, start, stop int) ([]json.RawMessage, error) {
+	vals, err := r.client.LRange(ctx, r.key(key), int64(start), int64(stop)).Result()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]json.RawMessage, len(vals))
+	for i, v := range vals {
+		out[i] = json.RawMessage(v)
+	}
+	return out, nil
 }
 
 func (r *Redis) Close() error {

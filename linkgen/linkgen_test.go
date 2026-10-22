@@ -2,6 +2,7 @@ package linkgen
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -15,6 +16,12 @@ func (m *mockStore) Set(_ context.Context, _ string, _ any, _ time.Time) error {
 func (m *mockStore) SetTTL(_ context.Context, _ string, _ any, _ time.Duration) error { return nil }
 func (m *mockStore) Delete(_ context.Context, _ string) error { return nil }
 func (m *mockStore) Exists(_ context.Context, _ string) (bool, error) { return false, nil }
+func (m *mockStore) ListPush(_ context.Context, _ string, _ any, _ int, _ time.Time) error {
+	return nil
+}
+func (m *mockStore) ListRange(_ context.Context, _ string, _, _ int) ([]json.RawMessage, error) {
+	return nil, nil
+}
 
 func TestGenerate4Plus4Upper(t *testing.T) {
 	g := New(&mockStore{}, config.Link4Plus4Upper)

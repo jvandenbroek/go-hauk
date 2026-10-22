@@ -95,8 +95,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		point = []any{iv, lat, lon, ts, prv, acc, speed}
 	}
 
-	session.AddPoint(point)
-	if err := session.Save(ctx); err != nil {
+	if err := session.AddPoint(ctx, point); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

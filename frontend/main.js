@@ -715,7 +715,7 @@ function playNote(t, freq, endFreq, dur, peak) {
     osc.stop(t + dur + 0.01);
 }
 
-// Join: two quick rising notes. Leave: one lower, longer falling note.
+// Join: two quick rising notes. Leave: two falling notes, lower register.
 function playViewerTone(up) {
     try {
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -725,7 +725,8 @@ function playViewerTone(up) {
             playNote(t, 660, 700, 0.10, 0.4);
             playNote(t + 0.12, 990, 1050, 0.12, 0.4);
         } else {
-            playNote(t, 440, 330, 0.35, 0.4);
+            playNote(t, 880, 820, 0.10, 0.4);
+            playNote(t + 0.12, 660, 600, 0.12, 0.4);
         }
     } catch (err) {
         // no audio support or blocked by autoplay policy: stay silent

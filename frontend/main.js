@@ -722,11 +722,11 @@ function playViewerTone(up) {
         if (audioCtx.state === "suspended") audioCtx.resume();
         var t = audioCtx.currentTime;
         if (up) {
-            playNote(t, 660, 700, 0.10, 0.4);
-            playNote(t + 0.12, 990, 1050, 0.12, 0.4);
+            playNote(t, 660, 700, 0.10, 0.9);
+            playNote(t + 0.12, 990, 1050, 0.12, 0.9);
         } else {
-            playNote(t, 880, 820, 0.10, 0.4);
-            playNote(t + 0.12, 660, 600, 0.12, 0.4);
+            playNote(t, 880, 820, 0.10, 0.9);
+            playNote(t + 0.12, 660, 600, 0.12, 0.9);
         }
     } catch (err) {
         // no audio support or blocked by autoplay policy: stay silent

@@ -684,6 +684,21 @@ var VIEWER_ID = Math.random().toString(36).slice(2, 12);
 var lastViewers = null;
 var audioCtx = null;
 
+// Browsers block audio until the user interacts with the page. Create and
+// resume the context on the first gesture, otherwise the first poll-driven
+// tone (no gesture) leaves it suspended and the blips never play.
+function unlockViewerAudio() {
+    try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (err) {
+        // no audio support: stay silent
+    }
+}
+["pointerdown", "keydown", "touchend", "click"].forEach(function(ev) {
+    document.addEventListener(ev, unlockViewerAudio, { once: true, passive: true });
+});
+
 // Short, quiet sine blip. Rising for a viewer joining, falling for one leaving.
 function playViewerTone(up) {
     try {

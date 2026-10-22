@@ -699,24 +699,34 @@ function unlockViewerAudio() {
     document.addEventListener(ev, unlockViewerAudio, { once: true, passive: true });
 });
 
-// Short, quiet sine blip. Rising for a viewer joining, falling for one leaving.
+// One sine note starting at time t. Attack and decay keep it click-free.
+function playNote(t, freq, endFreq, dur, peak) {
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+}
+
+// Join: two quick rising notes. Leave: one lower, longer falling note.
 function playViewerTone(up) {
     try {
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === "suspended") audioCtx.resume();
         var t = audioCtx.currentTime;
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(up ? 660 : 880, t);
-        osc.frequency.exponentialRampToValueAtTime(up ? 990 : 440, t + 0.12);
-        gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(t);
-        osc.stop(t + 0.16);
+        if (up) {
+            playNote(t, 660, 700, 0.10, 0.4);
+            playNote(t + 0.12, 990, 1050, 0.12, 0.4);
+        } else {
+            playNote(t, 440, 330, 0.35, 0.4);
+        }
     } catch (err) {
         // no audio support or blocked by autoplay policy: stay silent
     }
